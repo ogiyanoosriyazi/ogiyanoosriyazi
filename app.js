@@ -62,12 +62,17 @@ async function save(){const st=$('#st');st.textContent='در حال ذخیره�
 if(pendingHero){await ghPut('hero.jpg',pendingHero.split(',')[1],'update hero image');D.hero='hero.jpg?v='+Date.now();pendingHero=null}
 await ghPut('data.json',b64(JSON.stringify(D,null,2)),'update site data');dirty=0;st.textContent='✓ ذخیره شد؛ تا ۱ یا ۲ دقیقه دیگر برای همه نمایش داده می‌شود'}
 catch(e){const m={401:'توکن نامعتبر یا منقضی شده',403:'توکن اجازه‌ی نوشتن ندارد',404:'ریپازیتوری پیدا نشد',409:'تداخل؛ صفحه را رفرش کن و دوباره امتحان کن',422:'خطای فایل؛ دوباره امتحان کن'}[e&&e.status]||'ارتباط با GitHub برقرار نشد';st.textContent='❌ ذخیره نشد: '+m}}
+async function key(pw,salt){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
+async function enc(tk,pw){const s=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),c=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await key(pw,s),new TextEncoder().encode(tk)));return JSON.stringify([...s,...iv,...c])}
+async function dec(blob,pw){const a=new Uint8Array(JSON.parse(blob));return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:a.slice(16,28)},await key(pw,a.slice(0,16)),a.slice(28)))}
 async function gate(){if(location.hash!=='#admin'){owner=false;open=0;adm();return}
-const t=localStorage.getItem('ghtk')||prompt('توکن GitHub را وارد کن (راهنما در README.txt):');if(!t)return;TK=t.trim();
+const blob=localStorage.getItem('ghenc');let pw='';
+if(blob){pw=prompt('رمز پنل مدیریت:');if(!pw)return;try{TK=await dec(blob,pw)}catch(e){alert('رمز اشتباه است');return}}
+else{const t=prompt('فقط بار اول: توکن GitHub را وارد کن:');if(!t)return;pw=prompt('یک رمز ساده برای پنل انتخاب کن (مثلاً 1234):');if(!pw)return;TK=t.trim()}
 try{const r=await fetch(`https://api.github.com/repos/${GH.o}/${GH.r}`,{headers:ghH()}),j=await r.json();if(!r.ok||!(j.permissions&&j.permissions.push))throw 0;
-localStorage.setItem('ghtk',TK);
+if(!blob)localStorage.setItem('ghenc',await enc(TK,pw));
 try{const f=await fetch(API('data.json')+'?t='+Date.now(),{headers:{...ghH(),Accept:'application/vnd.github.raw+json'}});if(f.ok){D=await f.json();render()}}catch(e){}
-owner=true;open=1;adm()}catch(e){localStorage.removeItem('ghtk');alert('توکن اشتباه است یا به این ریپازیتوری دسترسی نوشتن ندارد')}}
-function out(){localStorage.removeItem('ghtk');location.hash='';location.reload()}
+owner=true;open=1;adm()}catch(e){alert('توکن اشتباه است یا به این ریپازیتوری دسترسی نوشتن ندارد')}}
+function out(){localStorage.removeItem('ghenc');localStorage.removeItem('ghtk');location.hash='';location.reload()}
 window.addEventListener('hashchange',gate);
-fetch('data.json?t='+Date.now()).then(r=>r.json()).then(d=>{D=d;render();gate()}).catch(()=>{$('#app').innerHTML='<p style="padding:60px;text-align:center">data.json بارگذاری نشد. مطمئن شو کنار index.html آپلود شده است.</p>'});
+fetch('data.json?t='+Date.now()).then(r=>r.json()).then(d=>{D=d;render();gate()}).catch(()=>{$('#app').innerHTML='<p style="padding:60px;text-align:center">data.json بارگذاری نشد. مطمئن شو کنار index.html آپلود شده است.</p>'});=>{D=d;render();gate()}).catch(()=>{$('#app').innerHTML='<p style="padding:60px;text-align:center">data.json بارگذاری نشد. مطمئن شو کنار index.html آپلود شده است.</p>'});
